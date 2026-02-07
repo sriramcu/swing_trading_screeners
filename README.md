@@ -15,6 +15,7 @@ sriramcu-swing_trading_screeners/
 ├── 13_21_logic.py              # ✅ main/current screener (US + India) + caching
 ├── ind_nifty200list.csv        # India symbols list (expects column: Symbol)
 ├── ind_nifty500list.csv        # Larger India symbols list (expects column: Symbol)
+├── us_stocks.csv               # US symbols list (expects column: Symbol)
 ├── screen_india_stocks.py      # older India screener (more indicators)
 └── screen_us_stocks_hma.py     # older US screener (HMA / other criteria)
 ```
