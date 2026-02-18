@@ -76,6 +76,7 @@ def screen_one_ticker(
     ema_slow: int,
     vol_lookback: int,
     vol_multiplier: float,
+    recency: int
 ) -> tuple[bool, dict]:
     """
     df must have columns: Open, Close, Volume
@@ -100,7 +101,7 @@ def screen_one_ticker(
     # barsSinceAbove = ta.barssince(not aboveBoth)
     # withinThreeBars = barsSinceAbove > 0 and barsSinceAbove <= 3
     bars_since_not_above = barssince_last_true(~above_both)
-    within_three = pd.notna(bars_since_not_above) and (bars_since_not_above > 0) and (bars_since_not_above <= 3)
+    within_three = pd.notna(bars_since_not_above) and (bars_since_not_above > 0) and (bars_since_not_above <= recency)
 
     is_green = close.iloc[-1] > open_.iloc[-1]
     vol_cond = vol.iloc[-1] > (avg_vol.iloc[-1] * vol_multiplier) if pd.notna(avg_vol.iloc[-1]) else False
@@ -393,6 +394,7 @@ def main():
     parser.add_argument("--ema-slow", type=int, default=21, help="Slow EMA length (default: 21)")
     parser.add_argument("--vol-mult", type=float, default=1.5, help="Volume multiplier (default: 1.5)")
     parser.add_argument("--vol-lookback", type=int, default=30, help="Volume SMA lookback (default: 30)")
+    parser.add_argument("--recency", type=int, default=3, help="Max number of bars since breakout (default: 3)")
 
     # [new] cache flags
     parser.add_argument(
@@ -460,6 +462,7 @@ def main():
             ema_slow=args.ema_slow,
             vol_lookback=args.vol_lookback,
             vol_multiplier=args.vol_mult,
+            recency=args.recency
         )
         if ok:
             winners.append(sym)
