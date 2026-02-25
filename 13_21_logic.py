@@ -23,6 +23,13 @@ Key fixes vs your pasted version:
 4) Cache key now includes a hash of the actual symbol subset so different ranges with same count won’t collide.
    (Still includes UTC date and num tickers as you requested.)
 
+NEW (timezone resiliency / exclude ongoing session):
+- yfinance can include a "forming" daily bar for the current trading day (especially US tickers intraday).
+- This script now drops today's row ONLY when the market is currently open (country-aware),
+  so screening always uses the last COMPLETED daily close.
+
+Also prints a single debug line showing which date is being used for "latest close" (for one sample ticker).
+
 Example:
   python screener.py --country india --csv ind_nifty200list.csv --rank-start 2500 --rank-end 2700
   python screener.py --country us --csv us_stocks.csv --limit 500 --cache-mode new --verbose
@@ -34,6 +41,8 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import pickle
 from pathlib import Path
+from zoneinfo import ZoneInfo
+from datetime import time as dtime
 
 import numpy as np
 import pandas as pd
@@ -210,6 +219,67 @@ def screen_one_ticker(
         "lower_close_ratio": float(lower_close_ratio),
     }
     return buy, debug
+
+
+# ----------------------------
+# Market-time helpers (NEW)
+# ----------------------------
+def _market_clock(country: str) -> tuple[str, dtime, dtime]:
+    """
+    Returns (timezone_name, open_time, close_time) for regular session.
+    Approx RTH times; does not account for holidays (fine for screener).
+    """
+    c = country.lower()
+    if c in ("us", "usa", "unitedstates", "united_states"):
+        return ("America/New_York", dtime(9, 30), dtime(16, 0))
+    if c in ("india", "in"):
+        return ("Asia/Kolkata", dtime(9, 15), dtime(15, 30))
+    raise ValueError("country must be one of: us, india")
+
+
+def _is_market_open_now(country: str, now_utc: datetime) -> tuple[bool, str]:
+    """
+    Returns (is_open, debug_string). Uses UTC -> exchange timezone conversion.
+    Laptop timezone does NOT matter.
+    """
+    tz_name, open_t, close_t = _market_clock(country)
+    tz = ZoneInfo(tz_name)
+    now_local = now_utc.astimezone(tz)
+
+    # Weekends closed
+    if now_local.weekday() >= 5:
+        return False, f"{tz_name} now={now_local} (weekend)"
+
+    is_open = open_t <= now_local.time() < close_t
+    return is_open, f"{tz_name} now={now_local} open={open_t} close={close_t} is_open={is_open}"
+
+
+def drop_ongoing_daily_bar(df: pd.DataFrame, country: str, sym: str, now_utc: datetime, verbose: bool) -> pd.DataFrame:
+    """
+    If market is open now and the latest row matches today's exchange-local date,
+    drop that last row (because it's the forming/ongoing session daily bar).
+    Works even if df.index is tz-naive (yfinance typical daily output).
+    """
+    if df is None or df.empty:
+        return df
+
+    is_open, dbg = _is_market_open_now(country, now_utc)
+    if verbose:
+        print(f"[MARKET] {sym}: {dbg}")
+
+    if not is_open:
+        return df
+
+    tz_name, _, _ = _market_clock(country)
+    today_local = now_utc.astimezone(ZoneInfo(tz_name)).date()
+
+    last_date = df.index[-1].date()
+    if last_date == today_local:
+        if verbose:
+            print(f"[DROP TODAY BAR] {sym}: dropping forming daily bar dated {last_date} (market open)")
+        return df.iloc[:-1]
+
+    return df
 
 
 # ----------------------------
@@ -538,10 +608,13 @@ def main():
 
     winners: list[str] = []
 
+    # NEW: compute now_utc once, and use exchange-time logic to drop forming daily bar
+    now_utc = datetime.now(timezone.utc)
+
+    printed_date_debug = False
     for sym in symbols:
         df = price_map.get(sym)
         if df is None or df.empty:
-            # Keep noisy prints off unless debugging
             continue
 
         # Hard last-N-years filter (matches your intent)
@@ -549,6 +622,22 @@ def main():
         df2 = df[df.index >= cutoff]
         if df2.empty:
             continue
+
+        # NEW: drop ongoing daily bar if market is currently open (country-aware)
+        df2 = drop_ongoing_daily_bar(df2, args.country, sym, now_utc, args.verbose)
+        if df2.empty:
+            continue
+
+        # NEW: print which date we are using for "latest close" (for any ONE ticker)
+        if not printed_date_debug:
+            tz_name, _, _ = _market_clock(args.country)
+            used_date = df2.index[-1].date()
+            today_local = now_utc.astimezone(ZoneInfo(tz_name)).date()
+            print(
+                f"[DEBUG USED CLOSE DATE] {sym}: using last_date={used_date} "
+                f"(exchange_tz={tz_name}, exchange_today={today_local}, utc_now={now_utc.isoformat()})"
+            )
+            printed_date_debug = True
 
         ok, dbg = screen_one_ticker(
             df2,
