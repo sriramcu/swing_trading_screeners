@@ -80,15 +80,27 @@ def slice_by_rank(
       - explicit rank range [rank_start, rank_end] (1-based, inclusive), OR
       - top N via limit
 
-    If both rank_start/rank_end are None -> use limit (if provided), else all.
+    NEW BEHAVIOR:
+      - If rank_start, rank_end, AND limit are ALL None → default to top 200
+
     If rank_start is provided but rank_end is None -> take from rank_start to end.
     """
+
+    DEFAULT_LIMIT = 200
+
+    # If no rank range specified
     if rank_start is None and rank_end is None:
+
+        # NEW: default to top 200
         if limit is None:
-            return symbols
+            limit = DEFAULT_LIMIT
+            print(f"[INFO] No --limit or --rank-range provided. Defaulting to top {DEFAULT_LIMIT} symbols.")
+
         return symbols[: max(limit, 0)]
 
+    # Rank range mode
     n = len(symbols)
+
     s = 1 if rank_start is None else rank_start
     e = n if rank_end is None else rank_end
 
@@ -99,7 +111,6 @@ def slice_by_rank(
     if e < s:
         return []
 
-    # Convert 1-based inclusive to 0-based slice
     return symbols[s - 1 : e]
 
 
@@ -545,8 +556,8 @@ def safe_earnings_date_str(sym: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="EMA + Volume Strike Zone Screener (US + India)")
-    parser.add_argument("--country", choices=["us", "india"], required=True, help="Market to screen")
-    parser.add_argument("--csv", required=True, help="CSV file containing symbols")
+    parser.add_argument("--country", choices=["us", "india"], default="us",help="Market to screen")
+    parser.add_argument("--csv", default="us_stocks.csv", help="CSV file containing symbols")
     parser.add_argument("--symbol-col", default="Symbol", help="Column name in CSV for symbols (default: Symbol)")
 
     # Universe selection

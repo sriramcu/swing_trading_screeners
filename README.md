@@ -3,8 +3,43 @@
 A small collection of **stock screening scripts** built around Yahoo Finance data (`yfinance`).
 **Current / primary screener:** `13_21_logic.py` (EMA 13/21 + volume spike + recent-breakout filter + caching + symbol-range selection).
 
-> ✅ This repository is **screening-only**.
+> ✅ This repository is **screening-only**.  
 > It does **not** place trades, backtest, or paper trade.
+
+---
+
+## TL;DR (quick start)
+
+If you have **zero coding experience**, do this:
+
+1) **Download / clone** this repo  
+2) Open a terminal in the repo folder  
+3) Install dependencies:
+```bash
+pip install yfinance pandas numpy
+```
+
+4) Run the screener (defaults to **US + `us_stocks.csv` + top 200**):
+```bash
+python 13_21_logic.py
+```
+
+Common runs:
+
+- **India (Nifty 200 list)**:
+```bash
+python 13_21_logic.py --country india --csv ind_nifty200list.csv
+```
+
+- **US, top 500 instead of top 200**:
+```bash
+python 13_21_logic.py --limit 500
+```
+
+- **Rank slice (e.g., 2500–2700 from a big ranked CSV)**:
+```bash
+python 13_21_logic.py --country us --csv us_stocks.csv --rank-start 2500 --rank-end 2700
+```
 
 ---
 
@@ -83,13 +118,13 @@ Close > EMA(21)
 However, the screener supports a relaxed tolerance using:
 
 ```
---lower_close_ratio
+--lower-close-ratio
 ```
 
 Example:
 
 ```
---lower_close_ratio 0.97
+--lower-close-ratio 0.97
 ```
 
 This means:
@@ -169,6 +204,18 @@ pip install yfinance pandas numpy
 
 ## Basic usage
 
+### Screen US stocks (default run)
+
+If you run with **no flags**, the script uses defaults:
+
+- `--country us`
+- `--csv us_stocks.csv`
+- Universe selection defaults to **top 200** when `--limit` and `--rank-*` are not provided
+
+```bash
+python 13_21_logic.py
+```
+
 ### Screen Indian stocks
 
 ```bash
@@ -178,23 +225,23 @@ python 13_21_logic.py --country india --csv ind_nifty200list.csv
 Example output:
 
 ```
-[CACHE] Using latest cache: 20260219_country-india_n-0200_s-00.pkl
-[CACHE HASH] key=20260219|india|200 → hash=bf39c1aa
+[CACHE] Using latest cache: 20260219_country-india_n-0200_h-bf39c1aa_s-00.pkl
+[DEBUG USED CLOSE DATE] RELIANCE.NS: using last_date=2026-02-18 (exchange_tz=Asia/Kolkata, exchange_today=2026-02-19, utc_now=2026-02-19T15:44:23+00:00)
 
 === RESULTS ===
 Country: india
 Screened: 200 tickers
 Passed: 4
 
-TRENT.NS               05-02-2026
-DMART.NS               28-01-2026
-TITAN.NS               06-02-2026
-HDFCBANK.NS           31-01-2026
+TRENT.NS               EarningsDate=2026-02-05
+DMART.NS               EarningsDate=2026-01-28
+TITAN.NS               EarningsDate=2026-02-06
+HDFCBANK.NS            EarningsDate=2026-01-31
 ```
 
 ---
 
-### Screen US stocks
+### Screen US stocks (explicit)
 
 ```bash
 python 13_21_logic.py --country us --csv us_stocks.csv
@@ -203,17 +250,17 @@ python 13_21_logic.py --country us --csv us_stocks.csv
 Example output:
 
 ```
-[CACHE] Downloaded fresh data → wrote: 20260219_country-us_n-0300_s-01.pkl
-[CACHE HASH] key=20260219|us|300 → hash=ac8819e2
+[CACHE] Downloaded fresh data → wrote: 20260219_country-us_n-0300_h-ac8819e2_s-01.pkl
+[DEBUG USED CLOSE DATE] AAPL: using last_date=2026-02-18 (exchange_tz=America/New_York, exchange_today=2026-02-19, utc_now=2026-02-19T15:44:23+00:00)
 
 === RESULTS ===
 Country: us
 Screened: 300 tickers
 Passed: 3
 
-NVDA                   20-02-2026
-META                   30-01-2026
-AMZN                   08-02-2026
+NVDA                   EarningsDate=2026-02-20
+META                   EarningsDate=2026-01-30
+AMZN                   EarningsDate=2026-02-08
 ```
 
 ---
@@ -222,84 +269,60 @@ AMZN                   08-02-2026
 
 Useful when working with ranked CSV lists.
 
-Example: screen stocks ranked 2500–2700
+Example: screen stocks ranked 2500–2700 (1-based, inclusive)
 
 ```
-python 13_21_logic.py \
-  --country us \
-  --csv us_stocks.csv \
-  --start-index 2500 \
-  --end-index 2700
+python 13_21_logic.py   --country us   --csv us_stocks.csv   --rank-start 2500   --rank-end 2700
 ```
 
-Example debug output:
-
-```
-[RANGE] selecting symbols index 2500 → 2700
-[RANGE] total selected = 200 symbols
-[CACHE HASH] key=20260219|us|200 → hash=d13f01bc
-```
-
-This integrates correctly with caching.
-
-Cache key automatically adjusts to the selected range size.
+Notes:
+- `--rank-start` / `--rank-end` are **1-based and inclusive**.
+- If you provide only `--rank-start`, it selects from that rank to the end.
 
 ---
 
 ## Command-line arguments (complete guide)
 
-### Required arguments
+### Common arguments (most people only need these)
 
-* `--country {us,india}`
+* `--country {us,india}` (default: `us`)  
   Market to screen.
 
-* `--csv PATH`
+* `--csv PATH` (default: `us_stocks.csv`)  
   CSV file containing symbols.
 
----
+* `--symbol-col NAME` (default: `Symbol`)  
+  Column name containing tickers.
 
-### Symbol handling
-
-* `--symbol-col NAME` (default: `Symbol`)
-
-Example:
+Examples:
 
 ```bash
 python 13_21_logic.py --country us --csv stocks.csv --symbol-col Ticker
+python 13_21_logic.py --country india --csv ind_nifty500list.csv
 ```
 
 ---
 
-### Symbol range selection
+### Universe selection
 
-New feature:
+You can select the symbol universe in **two ways**:
 
-* `--start-index N`
-* `--end-index N`
-
-Example:
+#### A) Top-N (easy)
+* `--limit N` (default: None; but if *everything* is None → defaults to top 200)
 
 ```bash
-python 13_21_logic.py --country india \
-  --csv ind_nifty500list.csv \
-  --start-index 200 \
-  --end-index 400
+python 13_21_logic.py --limit 500
 ```
 
-Debug output example:
+If you pass a huge number (e.g., `--limit 10000000`), Python slicing will just take “all available symbols in the CSV” (no error).
 
+#### B) Rank range (recommended for big ranked CSVs)
+* `--rank-start N` (1-based, inclusive)
+* `--rank-end N` (1-based, inclusive)
+
+```bash
+python 13_21_logic.py --rank-start 2500 --rank-end 2700
 ```
-[RANGE] selected indices 200–400
-[RANGE HASH] count=200
-```
-
----
-
-### Universe size (legacy)
-
-* `--limit N` (default: 300)
-
-If range is specified, limit is ignored.
 
 ---
 
@@ -324,7 +347,7 @@ Core parameters:
 * `--vol-lookback N` (default: 30)
 * `--vol-mult X` (default: 1.5)
 * `--recency N` (default: 3)
-* `--lower_close_ratio X` (default: 1.0)
+* `--lower-close-ratio X` (default: 1.0)
 
 Examples:
 
@@ -335,10 +358,7 @@ python 13_21_logic.py --country us --csv us_stocks.csv --vol-mult 1.2
 More relaxed EMA:
 
 ```bash
-python 13_21_logic.py \
-  --country us \
-  --csv us_stocks.csv \
-  --lower_close_ratio 0.98
+python 13_21_logic.py   --country us   --csv us_stocks.csv   --lower-close-ratio 0.98
 ```
 
 Example debug:
@@ -364,15 +384,35 @@ Example:
 
 ```
 NVDA PASSES
+  last_date: 2026-02-18 00:00:00
   latest_close: 884.21
   latest_open: 875.44
   ema_fast: 891.02
   ema_slow: 903.11
   avg_vol: 45.2M
   latest_vol: 82.4M
-  bars_since_not_aboveBoth: 2
-  within_recency: True
+  bars_since_not_aboveBoth_strict: 2
+  within_recency_strict: True
 ```
+
+---
+
+## Timezone resiliency / excluding the ongoing trading session (important)
+
+Sometimes **yfinance includes a forming daily bar for “today”** (especially for US tickers during market hours).  
+If you use that bar as “latest close”, you get inconsistent results intraday.
+
+**Fix implemented in `13_21_logic.py`:**
+- If the market is **currently open** (country-aware, exchange timezone), and the latest row is dated “today” in that exchange timezone, the script **drops that last row** before screening.
+- This means the screener always uses the last **completed** daily close.
+
+To make this visible, the script prints a one-time line like:
+
+```
+[DEBUG USED CLOSE DATE] AAPL: using last_date=2026-02-18 (exchange_tz=America/New_York, exchange_today=2026-02-19, utc_now=2026-02-19T15:44:23+00:00)
+```
+
+If something ever changes in yfinance behavior, this debug line should make it obvious what date your screener is actually using.
 
 ---
 
@@ -390,29 +430,22 @@ Cache files are keyed by:
 
 * UTC date
 * country
-* number of tickers selected (including range selections)
+* number of tickers selected
+* a short hash of the **actual selected symbol subset** (prevents collisions when two different ranges have the same count)
 
 Example filename:
 
 ```
-20260219_country-us_n-0200_s-00.pkl
+20260219_country-us_n-0200_h-bf39c1aa_s-00.pkl
 ```
 
-Example debug output:
+### ELI5 caching explanation
 
-```
-[CACHE HASH] raw key:
- date=20260219
- country=us
- ticker_count=200
+Think of the cache like this:
 
-[CACHE HASH] computed hash:
- bf39c1aa04b7c92e
-
-[CACHE] Using latest cache: 20260219_country-us_n-0200_s-00.pkl
-```
-
----
+- The first run today says: “I’m screening **these exact 200 tickers** for **US** today.”
+- It downloads all prices once, and saves them in `.cache_yf/prices/`.
+- Later runs today with the **same exact ticker subset** reuse that file instead of hammering Yahoo Finance again.
 
 ### Cache modes
 
@@ -428,13 +461,6 @@ Force refresh:
 
 ```
 --cache-mode new
-```
-
-Example:
-
-```
-[CACHE] Downloaded fresh data
-[CACHE HASH] new hash=ac8819e2
 ```
 
 ---
@@ -454,8 +480,7 @@ or
 Example:
 
 ```
-[CACHE] Using explicit file: 20260219_country-us_n-0200_s-01.pkl
-[CACHE HASH MATCH VERIFIED]
+[CACHE] Using explicit file: 20260219_country-us_n-0200_h-bf39c1aa_s-01.pkl
 ```
 
 ---
@@ -463,10 +488,9 @@ Example:
 ## Example debug session (illustrative)
 
 ```
-[RANGE] selected indices 2500–2700
-[CACHE HASH] key=20260219|us|200 → hash=d13f01bc
-
-Downloading prices...
+[INFO] No --limit or --rank-range provided. Defaulting to top 200 symbols.
+[CACHE] Using latest cache: 20260219_country-us_n-0200_h-bf39c1aa_s-00.pkl
+[DEBUG USED CLOSE DATE] NVDA: using last_date=2026-02-18 (exchange_tz=America/New_York, exchange_today=2026-02-19, utc_now=2026-02-19T15:44:23+00:00)
 
 Checking NVDA:
  close=884.21
@@ -493,7 +517,7 @@ Checking META:
 * Yahoo Finance data can be missing for some symbols; those tickers are skipped.
 * India tickers are converted to `.NS` unless the symbol already contains a suffix.
 * Earnings dates come from `yf.Ticker(...).calendar` and may fail.
-* Cache keys include ticker count, so changing symbol ranges creates separate caches.
+* Cache keys include ticker count and a subset hash, so changing symbol ranges creates separate caches.
 * Recency applies to strict EMA crossing logic, not relaxed EMA logic.
 
 ---
@@ -512,4 +536,3 @@ They remain for reference, but the **recommended workflow is `13_21_logic.py`.**
 
 This project is for educational screening and experimentation only.
 It is **not financial advice**.
-
